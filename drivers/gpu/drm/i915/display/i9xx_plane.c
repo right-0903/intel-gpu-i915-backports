@@ -325,8 +325,13 @@ i9xx_plane_check(struct intel_crtc_state *crtc_state,
 		return ret;
 
 	ret = intel_atomic_plane_check_clipping(plane_state, crtc_state,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 						DRM_PLANE_HELPER_NO_SCALING,
 						DRM_PLANE_HELPER_NO_SCALING,
+#else
+						DRM_PLANE_NO_SCALING,
+						DRM_PLANE_NO_SCALING,
+#endif
 						i9xx_plane_has_windowing(plane));
 	if (ret)
 		return ret;

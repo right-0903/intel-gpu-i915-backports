@@ -136,12 +136,24 @@ static u64 random_offset(u64 start, u64 end, u64 len, u64 align)
 	range = round_down(end - len, align) - round_up(start, align);
 	if (range) {
 		if (sizeof(unsigned long) == sizeof(u64)) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 			addr = get_random_long();
+#else
+			addr = get_random_u64();
+#endif
 		} else {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 			addr = get_random_int();
+#else
+			addr = get_random_u32();
+#endif
 			if (range > U32_MAX) {
 				addr <<= 32;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 				addr |= get_random_int();
+#else
+				addr |= get_random_u32();
+#endif
 			}
 		}
 		div64_u64_rem(addr, range, &addr);

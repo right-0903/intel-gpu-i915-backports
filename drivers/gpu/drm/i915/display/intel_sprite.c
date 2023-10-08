@@ -1354,8 +1354,13 @@ g4x_sprite_check(struct intel_crtc_state *crtc_state,
 {
 	struct intel_plane *plane = to_intel_plane(plane_state->uapi.plane);
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 	int min_scale = DRM_PLANE_HELPER_NO_SCALING;
 	int max_scale = DRM_PLANE_HELPER_NO_SCALING;
+#else
+	int min_scale = DRM_PLANE_NO_SCALING;
+	int max_scale = DRM_PLANE_NO_SCALING;
+#endif
 	int ret;
 
 	if (g4x_fb_scalable(plane_state->hw.fb)) {
@@ -1425,8 +1430,13 @@ vlv_sprite_check(struct intel_crtc_state *crtc_state,
 		return ret;
 
 	ret = intel_atomic_plane_check_clipping(plane_state, crtc_state,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 						DRM_PLANE_HELPER_NO_SCALING,
 						DRM_PLANE_HELPER_NO_SCALING,
+#else
+						DRM_PLANE_NO_SCALING,
+						DRM_PLANE_NO_SCALING,
+#endif
 						true);
 	if (ret)
 		return ret;

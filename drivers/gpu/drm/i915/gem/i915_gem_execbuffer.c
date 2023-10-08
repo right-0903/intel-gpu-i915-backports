@@ -2912,7 +2912,11 @@ gen8_dispatch_bsd_engine(struct drm_i915_private *dev_priv,
 	/* Check whether the file_priv has already selected one ring. */
 	if ((int)file_priv->bsd_engine < 0)
 		file_priv->bsd_engine =
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 			get_random_int() % num_vcs_engines(dev_priv);
+#else
+			get_random_u32() % num_vcs_engines(dev_priv);
+#endif
 
 	return file_priv->bsd_engine;
 }

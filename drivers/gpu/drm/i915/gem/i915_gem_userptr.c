@@ -267,6 +267,9 @@ static const struct dma_fence_work_ops userptr_ops = {
 static int
 probe_range(struct mm_struct *mm, unsigned long addr, unsigned long len)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
+						DRM_PLANE_HELPER_NO_SCALING,
+						DRM_PLANE_HELPER_NO_SCALING,
 	const unsigned long end = addr + len;
 	struct vm_area_struct *vma;
 	int ret = -EFAULT;
@@ -291,6 +294,28 @@ probe_range(struct mm_struct *mm, unsigned long addr, unsigned long len)
 
 	mmap_read_unlock(mm);
 	return ret;
+#else
+	VMA_ITERATOR(vmi, mm, addr);
+	struct vm_area_struct *vma;
+	unsigned long end = addr + len;
+
+	mmap_read_lock(mm);
+	for_each_vma_range(vmi, vma, end) {
+		/* Check for holes, note that we also update the addr below */
+		if (vma->vm_start > addr)
+			break;
+
+		if (vma->vm_flags & (VM_PFNMAP | VM_MIXEDMAP))
+			break;
+
+		addr = vma->vm_end;
+	}
+	mmap_read_unlock(mm);
+
+	if (vma || addr < end)
+		return -EFAULT;
+	return 0;
+#endif
 }
 
 static int i915_gem_userptr_get_pages(struct drm_i915_gem_object *obj)

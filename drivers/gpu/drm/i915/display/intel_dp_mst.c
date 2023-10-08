@@ -86,7 +86,11 @@ static int intel_dp_mst_compute_link_config(struct intel_encoder *encoder,
 		crtc_state->pipe_bpp = bpp;
 
 		crtc_state->pbn = drm_dp_calc_pbn_mode(adjusted_mode->crtc_clock,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 						       bpp,
+#else
+							   crtc_state->pipe_bpp,
+#endif
 						       false);
 
 #ifdef BPM_DRM_DP_MST_PORT_VCPI_NOT_PRESENT
@@ -408,6 +412,7 @@ static int
 intel_dp_mst_atomic_check(struct drm_connector *connector,
 			  struct drm_atomic_state *_state)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 	struct intel_atomic_state *state = to_intel_atomic_state(_state);
 	struct drm_connector_state *new_conn_state =
 		drm_atomic_get_new_connector_state(&state->base, connector);
@@ -449,6 +454,24 @@ intel_dp_mst_atomic_check(struct drm_connector *connector,
 					       intel_connector->port);
 
 	return ret;
+#else
+	struct intel_atomic_state *state = to_intel_atomic_state(_state);
+	struct intel_connector *intel_connector =
+		to_intel_connector(connector);
+	int ret;
+
+	ret = intel_digital_connector_atomic_check(connector, &state->base);
+	if (ret)
+		return ret;
+
+	ret = intel_dp_mst_atomic_master_trans_check(intel_connector, state);
+	if (ret)
+		return ret;
+
+	return drm_dp_atomic_release_time_slots(&state->base,
+						&intel_connector->mst_port->mst_mgr,
+						intel_connector->port);
+#endif
 }
 
 static void clear_act_sent(struct intel_encoder *encoder,
@@ -486,10 +509,21 @@ static void intel_mst_disable_dp(struct intel_atomic_state *state,
 		to_intel_connector(old_conn_state->connector);
 	struct drm_i915_private *i915 = to_i915(connector->base.dev);
 #ifdef BPM_DRM_DP_MST_PORT_VCPI_NOT_PRESENT
-	struct drm_dp_mst_topology_state *mst_state =
-		drm_atomic_get_mst_topology_state(&state->base, &intel_dp->mst_mgr);
-	struct drm_dp_mst_atomic_payload *payload =
-		drm_atomic_get_mst_payload_state(mst_state, connector->port);
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
+		struct drm_dp_mst_topology_state *mst_state =
+			drm_atomic_get_mst_topology_state(&state->base, &intel_dp->mst_mgr);
+		struct drm_dp_mst_atomic_payload *payload =
+			drm_atomic_get_mst_payload_state(mst_state, connector->port);
+	#else
+		struct drm_dp_mst_topology_state *old_mst_state =
+			drm_atomic_get_old_mst_topology_state(&state->base, &intel_dp->mst_mgr);
+		struct drm_dp_mst_topology_state *new_mst_state =
+			drm_atomic_get_new_mst_topology_state(&state->base, &intel_dp->mst_mgr);
+		const struct drm_dp_mst_atomic_payload *old_payload =
+			drm_atomic_get_mst_payload_state(old_mst_state, connector->port);
+		struct drm_dp_mst_atomic_payload *new_payload =
+			drm_atomic_get_mst_payload_state(new_mst_state, connector->port);
+	#endif
 #else
 	int ret;
 #endif
@@ -499,20 +533,25 @@ static void intel_mst_disable_dp(struct intel_atomic_state *state,
 
 	intel_hdcp_disable(intel_mst->connector);
 
-#ifdef BPM_DRM_DP_MST_PORT_VCPI_NOT_PRESENT
-	drm_dp_remove_payload(&intel_dp->mst_mgr, mst_state,
-					payload, payload);
-#else
-	drm_dp_mst_reset_vcpi_slots(&intel_dp->mst_mgr, connector->port);
-#ifdef DRM_PAYLOAD_PART1_START_SLOT_PRESENT
-	ret = drm_dp_update_payload_part1(&intel_dp->mst_mgr, 1);
-#else
-	ret = drm_dp_update_payload_part1(&intel_dp->mst_mgr);
-#endif
-	if (ret) {
-		drm_dbg_kms(&i915->drm, "failed to update payload %d\n", ret);
-	}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
+	#ifdef BPM_DRM_DP_MST_PORT_VCPI_NOT_PRESENT
+		drm_dp_remove_payload(&intel_dp->mst_mgr, mst_state,
+						payload, payload);
+	#else
+		drm_dp_mst_reset_vcpi_slots(&intel_dp->mst_mgr, connector->port);
+	#ifdef DRM_PAYLOAD_PART1_START_SLOT_PRESENT
+		ret = drm_dp_update_payload_part1(&intel_dp->mst_mgr, 1);
+	#else
+		ret = drm_dp_update_payload_part1(&intel_dp->mst_mgr);
+	#endif
+		if (ret) {
+			drm_dbg_kms(&i915->drm, "failed to update payload %d\n", ret);
+		}
 
+	#endif
+#else
+	drm_dp_remove_payload(&intel_dp->mst_mgr, new_mst_state,
+			      old_payload, new_payload);
 #endif
 
 	intel_audio_codec_disable(encoder, old_crtc_state, old_conn_state);
@@ -542,7 +581,9 @@ static void intel_mst_post_disable_dp(struct intel_atomic_state *state,
 	intel_disable_transcoder(old_crtc_state);
 
 #ifndef BPM_DRM_DP_MST_PORT_VCPI_NOT_PRESENT
-	drm_dp_update_payload_part2(&intel_dp->mst_mgr);
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
+		drm_dp_update_payload_part2(&intel_dp->mst_mgr);
+	#endif
 #endif
 
 	clear_act_sent(encoder, old_crtc_state);
@@ -553,7 +594,9 @@ static void intel_mst_post_disable_dp(struct intel_atomic_state *state,
 	wait_for_act_sent(encoder, old_crtc_state);
 
 #ifndef BPM_DRM_DP_MST_PORT_VCPI_NOT_PRESENT
-	drm_dp_mst_deallocate_vcpi(&intel_dp->mst_mgr, connector->port);
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
+		drm_dp_mst_deallocate_vcpi(&intel_dp->mst_mgr, connector->port);
+	#endif
 #endif
 
 	intel_ddi_disable_transcoder_func(old_crtc_state);
@@ -652,14 +695,16 @@ static void intel_mst_pre_enable_dp(struct intel_atomic_state *state,
 						pipe_config, NULL);
 
 #ifndef BPM_DRM_DP_MST_PORT_VCPI_NOT_PRESENT
-	ret = drm_dp_mst_allocate_vcpi(&intel_dp->mst_mgr,
-				       connector->port,
-				       pipe_config->pbn,
-				       pipe_config->dp_m_n.tu);
-	if (!ret)
-		drm_err(&dev_priv->drm, "failed to allocate vcpi\n");
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
+		ret = drm_dp_mst_allocate_vcpi(&intel_dp->mst_mgr,
+						connector->port,
+						pipe_config->pbn,
+						pipe_config->dp_m_n.tu);
+		if (!ret)
+			drm_err(&dev_priv->drm, "failed to allocate vcpi\n");
 
-	intel_dp->active_mst_links++;
+		intel_dp->active_mst_links++;
+	#endif
 #endif
 
 #ifdef BPM_DRM_DP_MST_PORT_VCPI_NOT_PRESENT
