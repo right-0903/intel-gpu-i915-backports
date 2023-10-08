@@ -14,6 +14,8 @@
  * To the call to the initfn we added the symbol dependency on compat
  * to make sure that compat.ko gets loaded for any compat modules.
  */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 #define dependency_symbol LINUX_I915_BACKPORT(dependency_symbol)
 extern void dependency_symbol(void);
 
@@ -50,6 +52,7 @@ extern void dependency_symbol(void);
 		rcu_barrier();						\
 	}								\
 	void cleanup_module(void) __attribute__((cold,alias("__exit_compat")));
+#endif
 #endif
 
 #if LINUX_VERSION_IS_LESS(3,3,0)
