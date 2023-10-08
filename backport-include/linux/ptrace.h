@@ -32,6 +32,7 @@
 #ifdef BPM_PTRACE_MAY_ACCESS_NOT_PRESENT
 #include_next <linux/ptrace.h>
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 #define ptrace_may_access LINUX_I915_BACKPORT(ptrace_may_access)
 
 /**
@@ -50,5 +51,6 @@
  */
 extern bool ptrace_may_access(struct task_struct *task, unsigned int mode);
 
+#endif
 #endif
 #endif /* __BACKPORT_PTRACE_H */
