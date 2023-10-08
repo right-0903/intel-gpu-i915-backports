@@ -11,12 +11,22 @@
 
 #ifdef BPM_DP_READ_LTTPR_CAPS_DPCD_ARG_NOT_PRESENT
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 #define drm_dp_read_lttpr_common_caps LINUX_I915_BACKPORT(drm_dp_read_lttpr_common_caps)
 int drm_dp_read_lttpr_common_caps(struct drm_dp_aux *aux,
+#else
+int drm_dp_read_lttpr_common_caps(struct drm_dp_aux *aux,
+							   const u8 dpcd[DP_RECEIVER_CAP_SIZE],
+#endif
                                   u8 caps[DP_LTTPR_COMMON_CAP_SIZE]);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 #define drm_dp_read_lttpr_phy_caps LINUX_I915_BACKPORT(drm_dp_read_lttpr_phy_caps)
 int drm_dp_read_lttpr_phy_caps(struct drm_dp_aux *aux,
+#else
+int drm_dp_read_lttpr_phy_caps(struct drm_dp_aux *aux,
+							   const u8 dpcd[DP_RECEIVER_CAP_SIZE],
+#endif
                                enum drm_dp_phy dp_phy,
                                u8 caps[DP_LTTPR_PHY_CAP_SIZE]);
 #endif

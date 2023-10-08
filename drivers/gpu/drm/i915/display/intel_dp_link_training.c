@@ -55,15 +55,21 @@ static u8 *intel_dp_lttpr_phy_caps(struct intel_dp *intel_dp,
 }
 
 static void intel_dp_read_lttpr_phy_caps(struct intel_dp *intel_dp,
-					 enum drm_dp_phy dp_phy)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,0,0)
+										 const u8 dpcd[DP_RECEIVER_CAP_SIZE],
+#endif
+										 enum drm_dp_phy dp_phy)
 {
 	struct intel_encoder *encoder = &dp_to_dig_port(intel_dp)->base;
 	u8 *phy_caps = intel_dp_lttpr_phy_caps(intel_dp, dp_phy);
 	char phy_name[10];
 
 	intel_dp_phy_name(dp_phy, phy_name, sizeof(phy_name));
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 	if (drm_dp_read_lttpr_phy_caps(&intel_dp->aux, dp_phy, phy_caps) < 0) {
+#else
+	if (drm_dp_read_lttpr_phy_caps(&intel_dp->aux, dpcd, dp_phy, phy_caps) < 0) {
+#endif
 		drm_dbg_kms(&dp_to_i915(intel_dp)->drm,
 			    "[ENCODER:%d:%s][%s] failed to read the PHY caps\n",
 			    encoder->base.base.id, encoder->base.name, phy_name);
@@ -77,7 +83,11 @@ static void intel_dp_read_lttpr_phy_caps(struct intel_dp *intel_dp,
 		    phy_caps);
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 static bool intel_dp_read_lttpr_common_caps(struct intel_dp *intel_dp)
+#else
+static bool intel_dp_read_lttpr_common_caps(struct intel_dp *intel_dp, const u8 dpcd[DP_RECEIVER_CAP_SIZE])
+#endif
 {
 	struct intel_encoder *encoder = &dp_to_dig_port(intel_dp)->base;
 	struct drm_i915_private *i915 = to_i915(encoder->base.dev);
@@ -92,7 +102,11 @@ static bool intel_dp_read_lttpr_common_caps(struct intel_dp *intel_dp)
 	if (DISPLAY_VER(i915) < 10 || IS_GEMINILAKE(i915))
 		return false;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 	if (drm_dp_read_lttpr_common_caps(&intel_dp->aux,
+#else
+	if (drm_dp_read_lttpr_common_caps(&intel_dp->aux, dpcd,
+#endif
 					  intel_dp->lttpr_common_caps) < 0)
 		goto reset_caps;
 
@@ -122,14 +136,22 @@ intel_dp_set_lttpr_transparent_mode(struct intel_dp *intel_dp, bool enable)
 	return drm_dp_dpcd_write(&intel_dp->aux, DP_PHY_REPEATER_MODE, &val, 1) == 1;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 static int intel_dp_init_lttpr(struct intel_dp *intel_dp)
+#else
+static int intel_dp_init_lttpr(struct intel_dp *intel_dp, const u8 dpcd[DP_RECEIVER_CAP_SIZE])
+#endif
 {
 	struct intel_encoder *encoder = &dp_to_dig_port(intel_dp)->base;
 	struct drm_i915_private *i915 = to_i915(encoder->base.dev);
 	int lttpr_count;
 	int i;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 	if (!intel_dp_read_lttpr_common_caps(intel_dp))
+#else
+	if (!intel_dp_read_lttpr_common_caps(intel_dp, dpcd))
+#endif
 		return 0;
 
 	lttpr_count = drm_dp_lttpr_count(intel_dp->lttpr_common_caps);
@@ -168,7 +190,11 @@ static int intel_dp_init_lttpr(struct intel_dp *intel_dp)
 	}
 
 	for (i = 0; i < lttpr_count; i++)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 		intel_dp_read_lttpr_phy_caps(intel_dp, DP_PHY_LTTPR(i));
+#else
+		intel_dp_read_lttpr_phy_caps(intel_dp, dpcd, DP_PHY_LTTPR(i));
+#endif
 
 	return lttpr_count;
 }
@@ -193,8 +219,29 @@ static int intel_dp_init_lttpr(struct intel_dp *intel_dp)
  */
 int intel_dp_init_lttpr_and_dprx_caps(struct intel_dp *intel_dp)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 	int lttpr_count = intel_dp_init_lttpr(intel_dp);
+#else
+	struct drm_i915_private *i915 = dp_to_i915(intel_dp);
+	int lttpr_count = 0;
 
+	/*
+	 * Detecting LTTPRs must be avoided on platforms with an AUX timeout
+	 * period < 3.2ms. (see DP Standard v2.0, 2.11.2, 3.6.6.1).
+	 */
+	if (!intel_dp_is_edp(intel_dp) &&
+	    (DISPLAY_VER(i915) >= 10 && !IS_GEMINILAKE(i915))) {
+		u8 dpcd[DP_RECEIVER_CAP_SIZE];
+
+		if (drm_dp_dpcd_probe(&intel_dp->aux, DP_LT_TUNABLE_PHY_REPEATER_FIELD_DATA_STRUCTURE_REV))
+			return -EIO;
+
+		if (drm_dp_read_dpcd_caps(&intel_dp->aux, dpcd))
+			return -EIO;
+
+		lttpr_count = intel_dp_init_lttpr(intel_dp, dpcd);
+	}
+#endif
 	/* The DPTX shall read the DPRX caps after LTTPR detection. */
 	if (drm_dp_read_dpcd_caps(&intel_dp->aux, intel_dp->dpcd)) {
 		intel_dp_reset_lttpr_common_caps(intel_dp);

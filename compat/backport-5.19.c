@@ -32,6 +32,7 @@ EXPORT_SYMBOL(pagecache_write_end);
 
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,0,0)
 #ifdef BPM_DP_READ_LTTPR_CAPS_DPCD_ARG_NOT_PRESENT
 
 /**
@@ -88,4 +89,5 @@ int drm_dp_read_lttpr_phy_caps(struct drm_dp_aux *aux,
 }
 EXPORT_SYMBOL(drm_dp_read_lttpr_phy_caps);
 
+#endif
 #endif
